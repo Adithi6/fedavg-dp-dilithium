@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from model.cnn import SmallCNN
+from crypto import dilithium_utils
 from utils.weights import apply_weight_arrays, weights_to_bytes
 
 
@@ -63,6 +64,9 @@ class FederatedClient:
         self.dp_clip_norm = 1.0
         self.dp_noise_std = 0.01
 
+        # Dilithium scheme
+        self.crypto_scheme = "Dilithium2"
+
         self.model = build_model(
             model_name=self.model_name,
             device=self.device,
@@ -78,6 +82,9 @@ class FederatedClient:
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
+        # Dilithium key generation
+        self.pk, self.sk, keygen_ms = dilithium_utils.keygen(self.crypto_scheme)
+
         logging.info(
             f"[{client_id}] initialized | "
             f"model={self.model_name} learning_rate={self.learning_rate} "
@@ -87,6 +94,11 @@ class FederatedClient:
         logging.info(
             f"[{client_id}] DP enabled | "
             f"clip_norm={self.dp_clip_norm} noise_std={self.dp_noise_std}"
+        )
+
+        logging.info(
+            f"[{client_id}] Dilithium keygen | scheme={self.crypto_scheme} "
+            f"{keygen_ms:.2f} ms (pk={len(self.pk)}B sk={len(self.sk)}B)"
         )
 
     def local_train(self, global_weight_arrays=None, epochs=1):
@@ -128,7 +140,6 @@ class FederatedClient:
                         param.grad += noise
 
                 self.optimizer.step()
-
                 total_loss += loss.item()
 
                 if batch_idx == 0:
@@ -145,18 +156,30 @@ class FederatedClient:
 
     def prepare_update(self) -> dict:
         """
-        Prepare plain model update.
-        No Dilithium.
-        No ZKP.
+        Prepare model update with Dilithium signature.
         DP is applied during local training.
+        No ZKP.
         """
         update_bytes = weights_to_bytes(self.model, self.weight_dtype)
 
+        signature, sign_ms = dilithium_utils.sign(
+            self.sk,
+            update_bytes,
+            self.crypto_scheme,
+        )
+
         logging.info(
-            f"[{self.client_id}] update prepared | size={len(update_bytes)/1024:.1f} KB"
+            f"[{self.client_id}] Dilithium signed update | "
+            f"scheme={self.crypto_scheme} "
+            f"size={len(update_bytes)/1024:.1f} KB sign={sign_ms:.3f} ms "
+            f"sig={len(signature)} B"
         )
 
         return {
             "client_id": self.client_id,
             "update_bytes": update_bytes,
+            "signature": signature,
+            "public_key": self.pk,
+            "sign_ms": float(sign_ms),
+            "crypto_scheme": self.crypto_scheme,
         }
