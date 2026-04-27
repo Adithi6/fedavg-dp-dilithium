@@ -18,6 +18,10 @@ logging:
   log_file: experiment.log
   log_level: INFO
 
+dp:
+  clip_norm: 1.0
+  noise_std: 0.01
+
 training:
   learning_rate: 0.001
 

@@ -9,6 +9,8 @@ from crypto import dilithium_utils
 from utils.weights import apply_weight_arrays, weights_to_bytes
 
 
+
+
 def build_model(
     model_name: str,
     device: str,
@@ -52,6 +54,7 @@ class FederatedClient:
         conv1_channels: int,
         conv2_channels: int,
         hidden_dim: int,
+        dp_config: dict = None,
     ):
         self.client_id = client_id
         self.dataloader = dataloader
@@ -60,10 +63,12 @@ class FederatedClient:
         self.learning_rate = learning_rate
         self.model_name = model_name
 
-        # Differential Privacy parameters
-        self.dp_clip_norm = 1.0
-        self.dp_noise_std = 0.01
-
+        # Differential Privacy parameters from config
+        if dp_config is None:
+            dp_config = {}
+        self.dp_clip_norm = dp_config.get("clip_norm", 1.0)
+        self.dp_noise_std = dp_config.get("noise_std", 0.01)
+        
         # Dilithium scheme
         self.crypto_scheme = "Dilithium2"
 
@@ -81,6 +86,8 @@ class FederatedClient:
 
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+
+
 
         # Dilithium key generation
         self.pk, self.sk, keygen_ms = dilithium_utils.keygen(self.crypto_scheme)
@@ -138,7 +145,6 @@ class FederatedClient:
                             device=param.grad.device,
                         )
                         param.grad += noise
-
                 self.optimizer.step()
                 total_loss += loss.item()
 

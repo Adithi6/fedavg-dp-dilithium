@@ -31,6 +31,7 @@ class GossipNode:
         conv1_channels: int,
         conv2_channels: int,
         hidden_dim: int,
+        dp_config: dict = None,
     ):
         self.client = FederatedClient(
             client_id=client_id,
@@ -46,6 +47,7 @@ class GossipNode:
             conv1_channels=conv1_channels,
             conv2_channels=conv2_channels,
             hidden_dim=hidden_dim,
+            dp_config=dp_config,
         )
 
         self.client_id = client_id

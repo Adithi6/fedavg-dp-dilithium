@@ -74,6 +74,7 @@ def main():
     MODEL = config["model"]
     DATA = config["data"]
     WEIGHTS = config["weights"]
+    DP_CONFIG = config.get("dp", {"clip_norm": 1.0, "noise_std": 0.01})
 
     # -------- DATA --------
     client_loaders, _ = make_client_loaders(
@@ -107,6 +108,7 @@ def main():
             conv1_channels=MODEL["conv1_channels"],
             conv2_channels=MODEL["conv2_channels"],
             hidden_dim=MODEL["hidden_dim"],
+            dp_config=DP_CONFIG,
         )
         nodes.append(node)
 
