@@ -1,7 +1,9 @@
 import logging
+import time
 from torch.utils.data import DataLoader
 import numpy as np
 
+from crypto import dilithium_utils
 from client.fl_client import FederatedClient
 from utils.weights import bytes_to_weight_arrays, apply_weight_arrays
 
@@ -117,16 +119,35 @@ class GossipNode:
 
         logging.info(f"[{self.client_id}] aggregating {len(submissions)} submission(s)")
 
+        start_time = time.time()
+        verify_ms = 0.0
+
         dtype_name = self.client.weight_dtype
 
         weight_sets = []
         for sub in submissions:
+            if "signature" in sub and "public_key" in sub and "crypto_scheme" in sub:
+                is_valid, v_ms = dilithium_utils.verify(
+                    sub["public_key"],
+                    sub["update_bytes"],
+                    sub["signature"],
+                    sub["crypto_scheme"]
+                )
+                verify_ms += v_ms
+                if not is_valid:
+                    logging.error(f"[{self.client_id}] invalid signature from {sub.get('client_id')}")
+                    continue
+
             arrays = bytes_to_weight_arrays(
                 sub["update_bytes"],
                 template_model,
                 dtype_name=dtype_name,
             )
             weight_sets.append(arrays)
+
+        if not weight_sets:
+            logging.warning(f"[{self.client_id}] no valid submissions to aggregate")
+            return
 
         averaged = [
             np.mean([weights[i] for weights in weight_sets], axis=0)
@@ -135,4 +156,5 @@ class GossipNode:
 
         apply_weight_arrays(self.client.model, averaged)
 
-        logging.info(f"[{self.client_id}] local aggregation completed")
+        total_agg_ms = (time.time() - start_time) * 1000
+        logging.info(f"[{self.client_id}] local aggregation completed | verify_time={verify_ms:.2f} ms | total_agg_time={total_agg_ms:.2f} ms")

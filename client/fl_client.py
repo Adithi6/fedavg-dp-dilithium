@@ -109,6 +109,9 @@ class FederatedClient:
         )
 
     def local_train(self, global_weight_arrays=None, epochs=1):
+        import time
+        start_time = time.time()
+        
         if global_weight_arrays is not None:
             apply_weight_arrays(self.model, global_weight_arrays)
 
@@ -155,9 +158,11 @@ class FederatedClient:
                     )
 
         total_batches = len(self.dataloader) * epochs
+        exec_ms = (time.time() - start_time) * 1000
         logging.info(
             f"[{self.client_id}] trained with DP | "
-            f"loss: {total_loss / total_batches:.4f}"
+            f"loss: {total_loss / total_batches:.4f} | "
+            f"execution_time={exec_ms:.2f} ms"
         )
 
     def prepare_update(self) -> dict:
@@ -166,6 +171,10 @@ class FederatedClient:
         DP is applied during local training.
         No ZKP.
         """
+        import time
+        import sys
+        start_time = time.time()
+        
         update_bytes = weights_to_bytes(self.model, self.weight_dtype)
 
         signature, sign_ms = dilithium_utils.sign(
@@ -174,14 +183,7 @@ class FederatedClient:
             self.crypto_scheme,
         )
 
-        logging.info(
-            f"[{self.client_id}] Dilithium signed update | "
-            f"scheme={self.crypto_scheme} "
-            f"size={len(update_bytes)/1024:.1f} KB sign={sign_ms:.3f} ms "
-            f"sig={len(signature)} B"
-        )
-
-        return {
+        payload = {
             "client_id": self.client_id,
             "update_bytes": update_bytes,
             "signature": signature,
@@ -189,3 +191,17 @@ class FederatedClient:
             "sign_ms": float(sign_ms),
             "crypto_scheme": self.crypto_scheme,
         }
+
+        total_prep_ms = (time.time() - start_time) * 1000
+        payload_size_kb = sys.getsizeof(payload) / 1024.0
+
+        logging.info(
+            f"[{self.client_id}] Dilithium signed update | "
+            f"scheme={self.crypto_scheme} "
+            f"size={len(update_bytes)/1024:.1f} KB sign={sign_ms:.3f} ms "
+            f"sig={len(signature)} B | "
+            f"total_prep_time={total_prep_ms:.2f} ms | "
+            f"payload_size={payload_size_kb:.2f} KB"
+        )
+
+        return payload
